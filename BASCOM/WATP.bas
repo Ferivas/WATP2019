@@ -8,7 +8,7 @@
 '
 
 
-$version 0 , 1 , 11
+$version 0 , 1 , 14
 $regfile = "m328Pdef.dat"
 $crystal = 16000000
 $hwstack = 80
@@ -17,7 +17,7 @@ $framesize = 80
 $baud = 9600
 
 
-$projecttime = 17
+$projecttime = 26
 
 
 
@@ -72,7 +72,7 @@ Wait 1
 Cls
 Setfont Font12x16
 Lcdat 1 , 1 , "WATP 2019"
-LCDAT 3,1 ,"AC=OK"
+Lcdat 3 , 1 , "AC=OK"
 
 Call Inivar()
 
@@ -83,6 +83,28 @@ Do
       Reset Sernew
       Print #1 , "SER1=" ; Serproc
       Call Procser()
+   End If
+
+   If Newseg = 1 Then
+      Reset Newseg
+      Incr Cntrdisp
+      Cntrdisp = Cntrdisp Mod 4
+      Select Case Cntrdisp
+         Case 0:
+            Lcdat 5 , 1 , "/"
+
+         Case 1:
+            Lcdat 5 , 1 , "-"
+
+         Case 2:
+            Lcdat 5 , 1 , "\"
+
+         Case 3:
+            Lcdat 5 , 1 , "l"
+
+      End Select
+
+
    End If
 
 Loop

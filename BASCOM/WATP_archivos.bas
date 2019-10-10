@@ -8,7 +8,7 @@
 '* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
 $nocompile
-$projecttime = 5
+$projecttime = 10
 
 
 '*******************************************************************************
@@ -29,13 +29,16 @@ Dim Cmderr As Byte
 Dim Tmpstr8 As String * 16
 Dim Tmpstr52 As String * 52
 
+Dim Cntrdisp As Byte
 
-'Variables TIMER0
+'Variables TIMER1
 Dim T0c As Byte
 Dim Num_ventana As Byte
 Dim Estado As Long
 Dim Estado_led As Byte
 Dim Iluminar As Bit
+Dim T1c As Byte
+Dim Newseg As Bit
 
 'Variables SERIAL0
 Dim Ser_ini As Bit , Sernew As Bit
@@ -107,6 +110,10 @@ Int_timer1:
       Led1 = Iluminar
       Incr Num_ventana
    End If
+
+   Incr T1c
+   T1c = T1c Mod 100
+   If T1c = 0 Then Set Newseg
 
 Return
 
