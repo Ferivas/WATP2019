@@ -8,7 +8,7 @@
 '* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
 $nocompile
-$projecttime = 10
+$projecttime = 81
 
 
 '*******************************************************************************
@@ -16,6 +16,10 @@ $projecttime = 10
 '*******************************************************************************
 Declare Sub Inivar()
 Declare Sub Procser()
+Declare Sub Leer_ds18b20()
+Declare Sub Leer_vac()
+Declare Sub Displcd()
+Declare Sub Leer_pta()
 
 
 '*******************************************************************************
@@ -31,6 +35,9 @@ Dim Tmpstr52 As String * 52
 
 Dim Cntrdisp As Byte
 
+Dim Bklsta As Byte
+Dim Alarmac As Bit , Alarmtemp As Bit , Vacinant As Bit , Puertaant As Bit
+Dim Cntrac As Byte , Cntrpta As Byte , Cntrt As Byte
 'Variables TIMER1
 Dim T0c As Byte
 Dim Num_ventana As Byte
@@ -39,6 +46,15 @@ Dim Estado_led As Byte
 Dim Iluminar As Bit
 Dim T1c As Byte
 Dim Newseg As Bit
+
+'DS18B20
+Dim Crc As Byte
+Dim T1 As Single , Bint As Integer , Tr As Byte , Ti As Byte
+Dim T1ant As Single
+Dim Bt(9) As Byte
+Dim Cntrtemp As Byte
+Dim Signo As String * 2
+'Dim Tempestr4 As String * 4 , Signo As String * 1 , Tempe As Byte
 
 'Variables SERIAL0
 Dim Ser_ini As Bit , Sernew As Bit
@@ -135,9 +151,136 @@ Print #1 , Version(1)
 Print #1 , Version(2)
 Print #1 , Version(3)
 Estado_led = 1
+T1ant = 99
+If Vacin = 0 Then
+   Set Vacinant
+Else
+   Reset Vacinant
+End If
+Lcdat 1 , 1 , "T=-- "
+
+If Puerta = 0 Then
+   Set Puertaant
+Else
+   reSet Puertaant
+End If
+
 
 
 End Sub
+
+
+'*****************************************************************************
+' Subrutina para leer VAC
+'*****************************************************************************
+Sub Leer_vac()
+   'Locate 2 , 1
+   If Vacin = 0 Then
+      If Vacin <> Vacinant Then
+         Lcdat 1 , 70 , "AC=OK"
+         Vacinant = Vacin
+      End If
+      Reset Relac
+      Alarmac = 0
+      If Alarmtemp = 0 Then
+         Bklsta = 1
+      End If
+   Else
+      If Vacin <> Vacinant Then
+         Lcdat 1 , 70 , "AC=NO"
+         Vacinant = Vacin
+      End If
+      Set Relac
+      Alarmac = 1
+      Bklsta = 2
+   End If
+
+End Sub
+
+'*****************************************************************************
+' Subrutina para leer la puerta
+'*****************************************************************************
+Sub Leer_pta()
+   'Locate 1 , 14
+'   If Puerta = 0 Then
+   If Puerta = 1 Then
+      If Puerta <> Puertaant Then                           'Cambiado con el hardware AVR
+         Puertaant = Puerta
+         Lcdat 4 , 1 , "P=A"
+      End If
+      Set Relpta
+   Else
+      If Puerta <> Puertaant Then                           'Cambiado con el hardware AVR
+         Puertaant = Puerta
+         Lcdat 4 , 1 , "P=C"
+      End If
+      Reset Relpta
+   End If
+
+End Sub
+
+'*****************************************************************************
+' Subrutina para timer1
+'*****************************************************************************
+Sub Displcd()
+   'Locate 1 , 1
+'(
+   If Alarmac = 1 Then
+      If Alarmtemp = 1 Then
+         Dispcntr2 = 30
+      Else
+         Dispcntr2 = 40
+      End If
+   Else
+      If Alarmtemp = 1 Then
+         Dispcntr2 = 20
+      Else
+         Dispcntr2 = Dispcntr
+      End If
+   End If
+')
+   Select Case Cntrdisp
+      Case 0:
+         Lcdat 7 , 1 , ">              <"
+      Case 1:
+         Lcdat 7 , 1 , " >            < "
+      Case 2:
+         Lcdat 7 , 1 , "  >          <  "
+      Case 3:
+         Lcdat 7 , 1 , "   >        <   "
+      Case 4:
+         Lcdat 7 , 1 , "    >      <    "
+      Case 5:
+         Lcdat 7 , 1 , "     >    <     "
+      Case 6:
+         Lcdat 7 , 1 , "      >  <      "
+      Case 7:
+         Lcdat 7 , 1 , "       ><       "
+      Case 8:
+         Lcdat 7 , 1 , "       <>       "
+      Case 9:
+         Lcdat 7 , 1 , "      <  >      "
+      Case 10:
+         Lcdat 7 , 1 , "     <    >     "
+      Case 11:
+         Lcdat 7 , 1 , "    <      >    "
+      Case 12:
+         Lcdat 7 , 1 , "   <        >   "
+      Case 13:
+         Lcdat 7 , 1 , "  <          >  "
+      Case 14:
+         Lcdat 7 , 1 , " <            > "
+      Case 15:
+         Lcdat 7 , 1 , "<              >"
+'      Case 20:
+'         Lcd "TEMP ALARM!  "
+'      Case 30:
+'         Lcd "AC&T  ALARM! "
+'      Case 40:
+'         Lcd " AC ALARM!   "
+   End Select
+End Sub
+'*****************************************************************************
 
 
 '*******************************************************************************
@@ -202,10 +345,84 @@ Sub Procser()
 End Sub
 
 
+'*****************************************************************************
+' Subrutina para leer temperatura del DS18B20
+'*****************************************************************************
+Sub Leer_ds18b20()
+1wreset
+1wwrite &HCC
+1wwrite &H44
+Waitms 800
+'Call Rdramds18b20()
+
+ 1wreset                                                    ' reset the bus
+ 1wwrite &HCC
+ 1wwrite &HBE                                               ' read 9 data bytest
+ For Tr = 1 To 9
+    Bt(tr) = 1wread()
+ Next                                                       ' read bytes in array
+ 1wreset
+
+'Call Crcit                                                    'Check CRC
+
+ Crc = 0
+ For Ti = 1 To 9
+ Tr = Crc Xor Bt(ti)
+ Crc = Lookup(tr , Crc8)
+ Next
+
+If Crc = 0 Then                                             ' if is OK, calculate for
+  Bint = Makeint(bt(1) , Bt(2))
+  If Bt(2).3 = 0 Then                                       'Temp postiva
+     T1 = Bint / 16
+     Signo = "+"
+  Else
+     Bint = Not Bint                                        ' Comprobar esta subrutina
+     Bint = Bint + 1
+     T1 = Bint / 16
+     Signo = "-"
+  End If
+   Print #1 , Signo ; Fusing(t1 , "#.##")
+Else
+   Print #1 , "CRC ERR"
+End If
+
+End Sub
+'*****************************************************************************
+
 
 '*******************************************************************************
 'TABLA DE DATOS
 '*******************************************************************************
+
+Crc8:
+Data 0 , 94 , 188 , 226 , 97 , 63 , 221 , 131 , 194 , 156
+Data 126 , 32 , 163 , 253 , 31 , 65 , 157 , 195 , 33 , 127
+Data 252 , 162 , 64 , 30 , 95 , 1 , 227 , 189 , 62 , 96
+Data 130 , 220 , 35 , 125 , 159 , 193 , 66 , 28 , 254 , 160
+Data 225 , 191 , 93 , 3 , 128 , 222 , 60 , 98 , 190 , 224
+Data 2 , 92 , 223 , 129 , 99 , 61 , 124 , 34 , 192 , 158
+Data 29 , 67 , 161 , 255 , 70 , 24 , 250 , 164 , 39 , 121
+Data 155 , 197 , 132 , 218 , 56 , 102 , 229 , 187 , 89 , 7
+Data 219 , 133 , 103 , 57 , 186 , 228 , 6 , 88 , 25 , 71
+Data 165 , 251 , 120 , 38 , 196 , 154 , 101 , 59 , 217 , 135
+Data 4 , 90 , 184 , 230 , 167 , 249 , 27 , 69 , 198 , 152
+Data 122 , 36 , 248 , 166 , 68 , 26 , 153 , 199 , 37 , 123
+Data 58 , 100 , 134 , 216 , 91 , 5 , 231 , 185 , 140 , 210
+Data 48 , 110 , 237 , 179 , 81 , 15 , 78 , 16 , 242 , 172
+Data 47 , 113 , 147 , 205 , 17 , 79 , 173 , 243 , 112 , 46
+Data 204 , 146 , 211 , 141 , 111 , 49 , 178 , 236 , 14 , 80
+Data 175 , 241 , 19 , 77 , 206 , 144 , 114 , 44 , 109 , 51
+Data 209 , 143 , 12 , 82 , 176 , 238 , 50 , 108 , 142 , 208
+Data 83 , 13 , 239 , 177 , 240 , 174 , 76 , 18 , 145 , 207
+Data 45 , 115 , 202 , 148 , 118 , 40 , 171 , 245 , 23 , 73
+Data 8 , 86 , 180 , 234 , 105 , 55 , 213 , 139 , 87 , 9
+Data 235 , 181 , 54 , 104 , 138 , 212 , 149 , 203 , 41 , 119
+Data 244 , 170 , 72 , 22 , 233 , 183 , 85 , 11 , 136 , 214
+Data 52 , 106 , 43 , 117 , 151 , 201 , 74 , 20 , 246 , 168
+Data 116 , 42 , 200 , 150 , 21 , 75 , 169 , 247 , 182 , 232
+Data 10 , 84 , 215 , 137 , 107 , 53
+'*****************************************************************************
 
 Tbl_err:
 Data "OK"                                                   '0
@@ -242,6 +459,7 @@ Data &B11111111111111111111111111110000&                    'Estado 16
 Pic:
 $bgf "WATCHING.bgf"
 
-$include "font12x16.font"
+$include "font8x8TT.font"
+$include "Font12x16.font"
 
 Loaded_arch:

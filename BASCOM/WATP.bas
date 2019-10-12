@@ -8,7 +8,7 @@
 '
 
 
-$version 0 , 1 , 14
+$version 0 , 1 , 48
 $regfile = "m328Pdef.dat"
 $crystal = 16000000
 $hwstack = 80
@@ -17,7 +17,7 @@ $framesize = 80
 $baud = 9600
 
 
-$projecttime = 26
+$projecttime = 77
 
 
 
@@ -28,6 +28,39 @@ $projecttime = 26
 'Configuracion de entradas/salidas
 Led1 Alias Portb.5                                          'LED ROJO
 Config Led1 = Output
+
+Buzzer Alias Portc.3
+Config Buzzer = Output
+Set Buzzer
+
+' Configura resistencias de pullup para leer pines de entrada
+Set Portb.0
+Set Portb.1
+Set Portb.2
+Set Portb.3
+
+'*******************************************************************************
+'Vacin Alias Pinc.0
+Vacin Alias Pind.3
+Config Vacin = Input
+Set Portd.3
+'set portc.0
+
+Puerta Alias Pinc.1
+Config Puerta = Input
+Set Portc.1
+
+
+Relac Alias Portd.4
+Config Relac = Output
+Reltmp Alias Portd.5                                        'NO
+Config Reltmp = Output
+Relpwr Alias Portd.6
+Config Relpwr = Output
+
+Relpta Alias Portd.7
+Config Relpta = Output
+
 
 
 'Configuración de Interrupciones
@@ -54,6 +87,9 @@ $lib "glcdSSD1306-I2C.lib"
 Config Graphlcd = Custom , Cols = 128 , Rows = 64 , Lcdname = "SSD1306"
 
 
+'Sensor DS18B20
+Config 1wire = Portc.0
+
 Enable Interrupts
 
 
@@ -70,10 +106,15 @@ Cls
 Showpic 0 , 0 , Pic
 Wait 1
 Cls
-Setfont Font12x16
-Lcdat 1 , 1 , "WATP 2019"
-Lcdat 3 , 1 , "AC=OK"
+Setfont Font8x8tt
+Lcdat 1 , 1 , "**  WATP 2019 **"
+Lcdat 3 , 1 , Version(1)
+Lcdat 5 , 1 , Version(2)
+Lcdat 7 , 1 , Version(3)
+Wait 2
+Cls
 
+Setfont Font12x16
 Call Inivar()
 
 
@@ -87,28 +128,47 @@ Do
 
    If Newseg = 1 Then
       Reset Newseg
+      If Alarmac = 1 Then
+         Incr Cntrac
+         If Cntrac.0 = 1 Then
+            Lcdat 1 , 70 , "AC=NO" , 1
+         Else
+            Lcdat 1 , 70 , "AC=NO" , 0
+         End If
+      End If
+
+      If Relpta = 1 Then
+         Incr Cntrpta
+         If Cntrpta.0 = 1 Then
+            Lcdat 4 , 1 , "P=A" , 1
+         Else
+            Lcdat 4 , 1 , "P=A" , 0
+         End If
+      End If
+
       Incr Cntrdisp
-      Cntrdisp = Cntrdisp Mod 4
-      Select Case Cntrdisp
-         Case 0:
-            Lcdat 5 , 1 , "/"
+      Cntrdisp = Cntrdisp Mod 16
+      Setfont Font8x8tt
+      Call Displcd()
 
-         Case 1:
-            Lcdat 5 , 1 , "-"
-
-         Case 2:
-            Lcdat 5 , 1 , "\"
-
-         Case 3:
-            Lcdat 5 , 1 , "l"
-
-      End Select
+      Incr Cntrtemp
+      Cntrtemp = Cntrtemp Mod 5
+      Setfont Font12x16
+      If Cntrtemp = 0 Then
+         Call Leer_ds18b20()
+         If T1 <> T1ant Then
+            T1ant = T1
+            Lcdat 1 , 1 , "     "
+            Lcdat 1 , 1 , "T=" ; Fusing(t1 , "#.#")
+         End If
+      End If
 
 
    End If
 
+   Call Leer_vac()
+   Call Leer_pta()
+
 Loop
-
-
 
 
