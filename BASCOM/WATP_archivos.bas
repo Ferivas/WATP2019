@@ -8,7 +8,7 @@
 '* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
 $nocompile
-$projecttime = 81
+$projecttime = 166
 
 
 '*******************************************************************************
@@ -20,12 +20,21 @@ Declare Sub Leer_ds18b20()
 Declare Sub Leer_vac()
 Declare Sub Displcd()
 Declare Sub Leer_pta()
+Declare Sub Proctec()
+Declare Sub Beep(byval Modb As Word , Byval Durab As Word)
+Declare Sub Beepok()
 
 
 '*******************************************************************************
 'Declaracion de variables
 '*******************************************************************************
 Dim Tmpb As Byte
+Dim Tmpw As Word , Tmpw2 As Word
+Dim Inibuzz As Bit
+Dim Cntrbuzz As Byte
+Dim Modbuzz As Byte
+Dim Topbuzz As Word , Durabuzz As Word
+Dim Enabug As Byte
 
 Dim Cmdtmp As String * 6
 Dim Atsnd As String * 200
@@ -46,6 +55,9 @@ Dim Estado_led As Byte
 Dim Iluminar As Bit
 Dim T1c As Byte
 Dim Newseg As Bit
+
+' TECLADO
+Dim Tecla As Byte , Tectmp As Byte , Teclaant AS BYTE
 
 'DS18B20
 Dim Crc As Byte
@@ -109,10 +121,29 @@ Return
 
 '*******************************************************************************
 
-
-
 '*******************************************************************************
 ' TIMER0
+'*******************************************************************************
+Int_timer0:
+   Timer0 = &HC2
+   If Inibuzz = 1 Then
+      Incr Cntrbuzz
+      Cntrbuzz = Cntrbuzz Mod Modbuzz
+      If Cntrbuzz = 0 Then
+         Toggle Buzzer
+      End If
+      Incr Durabuzz
+      Durabuzz = Durabuzz Mod Topbuzz
+      If Durabuzz = 0 Then
+         Reset Inibuzz
+         Set Buzzer
+      End If
+   End If
+
+Return
+
+'*******************************************************************************
+' TIMER1
 '*******************************************************************************
 Int_timer1:
    Timer1 = &HF63C
@@ -124,6 +155,8 @@ Int_timer1:
       Iluminar = Estado.num_ventana
       'Toggle Iluminar
       Led1 = Iluminar
+      Toggle Iluminar
+      Led2 = Iluminar
       Incr Num_ventana
    End If
 
@@ -146,7 +179,7 @@ Return
 '*******************************************************************************
 Sub Inivar()
 Reset Led1
-Print #1 , "************ DRIVER AUDIO ************"
+Print #1 , "************ WATP ************"
 Print #1 , Version(1)
 Print #1 , Version(2)
 Print #1 , Version(3)
@@ -157,13 +190,17 @@ If Vacin = 0 Then
 Else
    Reset Vacinant
 End If
-Lcdat 1 , 1 , "T=-- "
+Lcdat 4 , 1 , "T=-- "
 
 If Puerta = 0 Then
    Set Puertaant
 Else
    reSet Puertaant
 End If
+
+Call Beep(4 , 800)
+Call Beepok()
+
 
 
 
@@ -177,7 +214,7 @@ Sub Leer_vac()
    'Locate 2 , 1
    If Vacin = 0 Then
       If Vacin <> Vacinant Then
-         Lcdat 1 , 70 , "AC=OK"
+         Lcdat 1 , 1 , "AC=OK"
          Vacinant = Vacin
       End If
       Reset Relac
@@ -187,7 +224,7 @@ Sub Leer_vac()
       End If
    Else
       If Vacin <> Vacinant Then
-         Lcdat 1 , 70 , "AC=NO"
+         Lcdat 1 , 1 , "AC=NO"
          Vacinant = Vacin
       End If
       Set Relac
@@ -206,13 +243,13 @@ Sub Leer_pta()
    If Puerta = 1 Then
       If Puerta <> Puertaant Then                           'Cambiado con el hardware AVR
          Puertaant = Puerta
-         Lcdat 4 , 1 , "P=A"
+         Lcdat 1 , 78 , "P=A"
       End If
       Set Relpta
    Else
       If Puerta <> Puertaant Then                           'Cambiado con el hardware AVR
          Puertaant = Puerta
-         Lcdat 4 , 1 , "P=C"
+         Lcdat 1 , 78 , "P=C"
       End If
       Reset Relpta
    End If
@@ -309,7 +346,6 @@ Sub Procser()
             Tmpstr52 = Version(3)
             Atsnd = Atsnd + Tmpstr52 + ">"
 
-
          Case "SETLED"
             If Numpar = 2 Then
                Tmpb = Val(cmdsplit(2))
@@ -321,10 +357,33 @@ Sub Procser()
                Else
                   Cmderr = 5
                End If
+            Else
+               Cmderr = 4
+            End If
+
+         Case "TSTBUZ"
+            If Numpar = 3 Then
+               Tmpw = Val(cmdsplit(2))
+               Tmpw2 = Val(cmdsplit(2))
+               Atsnd = "Test Buzzer," + Str(tmpw) + "," + Str(tmpw2)
+               Sound Buzzer , Tmpw , Tmpw2
+               Set Buzzer
+               Cmderr = 0
+               'Set Inibuzz
+            Else
+               Cmderr = 4
+            End If
+
+         Case "INIBUZ"
+            If Numpar = 3 Then
+               Modbuzz = Val(cmdsplit(2))
+               Topbuzz = Val(cmdsplit(3))
+               Cmderr = 0
+               Atsnd = "Buzz, MOD=" + Str(modbuzz) + ", Dura=" + Str(topbuzz)
+               Set Inibuzz
 
             Else
                Cmderr = 4
-
             End If
 
          Case Else
@@ -382,13 +441,83 @@ If Crc = 0 Then                                             ' if is OK, calculat
      T1 = Bint / 16
      Signo = "-"
   End If
+  If Enabug.0 = 1 Then
    Print #1 , Signo ; Fusing(t1 , "#.##")
+  End If
 Else
    Print #1 , "CRC ERR"
 End If
 
 End Sub
 '*****************************************************************************
+
+'*****************************************************************************
+' Subrutina para procesamiento de teclado
+'*****************************************************************************
+Sub Proctec()
+   Tmpb = Pinb
+   Tmpb = Tmpb And &H0F
+   If Tmpb <> &H0F Then
+      Tectmp = Tmpb
+      Waitms 10
+      Tmpb = Pinb
+      Tmpb = Tmpb And &H0F
+      Tecla = 9
+      If Tectmp = Tmpb Then
+         Select Case Tectmp
+            Case &H0E:
+               Tecla = 0
+               'Teclaset = 1
+            Case &H0D:
+               Tecla = 1
+               'Teclaset = 0
+            Case &H0B:
+               Tecla = 2
+               'Teclaset = 0
+            Case &H07:
+               Tecla = 3
+               'Teclaset = 0
+            Case Else
+               Tecla = 9
+         End Select
+         Teclaant = Tecla
+         If Tecla < 4 Then
+            Call Beep(4 , 800)
+            'Set Initout
+            'Tout = 0
+            'Cntrtout = 0
+            'Bklsta = 1
+         End If
+      End If
+
+   Else
+      Tecla = 9
+   End If
+
+End Sub
+
+'*******************************************************************************
+' Subrutinas Buzzer
+'*******************************************************************************
+Sub Beep(byval Modb As Word , Byval Durab As Word)
+   Set Inibuzz
+   Modbuzz = Modb
+   Topbuzz = Durab
+   Do
+   Loop Until Inibuzz = 1
+End Sub
+
+Sub Beepok()
+   Set Inibuzz
+   Modbuzz = 4
+   Topbuzz = 800
+   Do
+   Loop Until Inibuzz = 1
+   Waitms 200
+   Set Inibuzz
+   Do
+   Loop Until Inibuzz = 1
+End Sub
 
 
 '*******************************************************************************

@@ -1,0 +1,9 @@
+*.bin
+*.bm
+*.cfg
+*.dbg
+*.hex
+*.rpt
+*.bm
+*.obj
+BASCOM/WATP.obj

@@ -1,0 +1,489 @@
+Copyright = Mcs Electronics
+Copyright = based on work of Ben Zijstra and Heiko/Hkipnik
+Www = Http ://Www.mcselec.com
+Email = Avr@mcselec.com
+Comment = SSD1306-I2C Graphic Display Library for 128x64
+Libversion = 1.00
+Date = 21 Jan 2015
+Statement = No Source Code From The Library May Be Distributed In Any Form
+Statement = Of Course This Does Not Apply For The Compiled Code When You Have A Bascom -avr License
+history=first release
+history=change to SH1106 Driver
+
+[_GLCD]
+$EXTERNAL _LPMBYTE, _GLOCATE
+_Init_lcd:
+_LCD_INIT:
+_SET_DISPLAY:
+
+  call _i2c_start                      ; send start to access the bus
+* ldi r30,low(_lcd_init_data * 2)
+* ldi r31,high(_lcd_init_data * 2)
+*#IF _ROMSIZE>65536
+*call _SET_RAMPZ
+*#ENDIF
+   ldi r21,28                          ; 28 bytes
+_lcd_init_lp:
+   call _lpmbyte                       ; get double command first byte
+   mov r24,r0
+   call _gwrite_cmd
+   dec r21
+   brne _Lcd_init_lp
+ret
+
+; slave address, CO|DC|ctrl, data
+;CO-continuation bit, if 0 next data will be normal data
+;ctrl-if 0, data is a command, if 1 data is normal data stored in GDRAM
+_lcd_init_data:
+.db &HAE, &H00                         ; SETDISPLAYCLOCKDIV , ratio 0x80
+.db &H10, &H40                         ; SETMULTIPLEX , 1f 128x32
+.db &H81, &HCF                         ; SETDISPLAYOFFSET , 00
+.db &HA1, &HC8                         ; SETSTARTLINE , CHARGEPUMP
+.db &HA6, &HA8                         ; vccstate 14 , MEMORYMODE
+.DB &H3F, &HD3                         ; A0 upside down SEGREMAP
+.db &H00, &HD5                         ; COMSCANDEC , SETCOMPINS
+.db &H80, &HD9                         ; 02 128x32  12 , SETCONTRAST
+.db &HF1, &HDA                         ; constrast value 255, SETPRECHARGE,
+.db &H12, &HDB                         ; vccstate  f1 ,  SETVCOMDETECT
+.db &H40, &H20                         ;  &H40 , DISPLAYALLON_RESUME
+.db &H02, &H8D                         ; NORMALDISPLAY
+.db &H14, &HA4
+.db &HA6, &HAF
+
+
+
+;all commands are single byte commands, these are not used by the driver
+; but can be used by the user
+_gwrite_cmd:
+  call _i2c_start
+  ldi r17,&H78
+  call _i2c_write                         ; write slave address
+  ldi r17,&H00                            ; command mode
+  call _i2c_write
+  mov r17,r24                             ; command address
+  Rjmp _Gwrite_DataMisc                   ; same code
+_gwrite_data:
+  ldi r17,&H78                             ;write slave address data write
+  call _i2c_start
+  call _i2c_write                         ; write data mode
+  ldi r17,&H40
+  call _i2c_write
+  mov r17,r24                             ; data
+_gwrite_datamisc:
+  call _i2c_write                         ; write Data
+jmp _i2c_stop
+
+
+;there is no difference between clear text and clear graphics!
+_clear_graph:
+_clear_text:
+  Ldi r16, 0
+_clear_graph2:
+  Ldi r24,&HB0                            ; page 0   + 0xB0
+  Add r24,r16                             ; page var
+  Rcall _gwrite_cmd
+  Ldi r24,&H10                            ; column address
+  Rcall _gwrite_cmd                       ; column upper nibble
+  Ldi r24,&H02                            ; SH1106 Start at 2
+  Rcall _gwrite_cmd                       ; column lower nibble
+  ldi r17,&H78
+  call _i2c_start
+  call _i2c_write
+  ldi r17,&H40                            ; Data Mode
+  call _i2c_write
+  Ldi r18,128                             ; 128 rows
+_clear_graph1:
+  clr r17                                 ; Data
+  call _i2c_write
+  Dec r18
+  Brne _clear_graph1                      ; write 128 times
+  Inc r16
+  Cpi r16,8                               ; 8 pages
+  Brne _clear_graph2
+ret
+
+;character in r24
+;in order to draw multiple fontsizes the fontdata stores the
+;number of bytes and the number of rows.
+;  .db 1,8,8,0  , means 1 row, 8 bits width, block size total, last param is spacing for true type fonts
+_gwrite_lcdchar:
+$EXTERNAL _LPMBYTE, _MUL8, _GLOCATE
+  Push r30                               ; save registers
+  Push r31
+  lds r21,{___lcdrow}                    ; the row
+  push r21                               ; save it
+  lds r7,{___lcdcol}
+  Lds r30 ,{___fonttable}                ; start of font data
+  Lds r31 ,{___fonttable +1}
+#IF _ROMSIZE>65536
+* In R3,RAMPZ                            ; save RAMPZ page
+* Lds r0,{___fonttable +2}                ; load page number for the used font
+* Out RampZ,r0                            ; set page number
+#ENDIF
+  Call _lpmbyte                          ; Get Y Bytes 1 For Example
+  mov r18,r0                             ; save Y
+  call _lpmbyte                          ; get X bytes , 8 for  an 8*8 font
+  mov r19,r0                             ; save X
+  call _lpmbyte                          ; get blocksize
+  mov r16,r0                             ; in accu
+  call _lpmbyte                          ; get blocksize
+  mov r22,r0                             ; spacing, should be 1 or 2
+
+  subi r24,32                            ; chars start at 32 (space)
+  mov r20,r24
+  call _mul8                             ; get offset
+
+  Add r30,r20                            ; add to start of font data
+  Adc r31,r21
+#IF _ROMSIZE>65536
+  rcall _glcd_rampcheck_inc              ; check boundery
+#ENDIF
+ ;--------optional true type option ----
+ clr r12
+ ;we need to determine the left space of the character so that we can skip these zeros
+ ;we store the left in r15
+ clr r1                                  ; we need a reg with zero
+ mov r14,r18                             ; Y bytes
+ cpi r22,0                               ; test for 0
+ breq _gwrite_lcdchar_rows               ; it is 0 so skip this option
+ clr r13
+ dec r13                                 ; put 255 into r13
+ mov r12,r13                             ; and also in r12
+_truetypey:
+ clr r15
+ mov r16,r19                             ; x bits
+_trueTypeX:
+  call _lpmbyte                          ; get data in r0
+  breq _trueType1                        ; it is zero so skip
+  dec r16                                ; adjust
+  Add r30,r16                            ; skip the rest of the bytes
+  Adc r31,r1                             ; add zero
+#IF _ROMSIZE>65536
+  rcall _glcd_rampcheck_inc              ; check boundery
+#ENDIF
+  rjmp  _truetype2                       ; skip code
+_truetype1:
+  inc r15                                ; inc zero bytes counter
+  dec r16
+brne _trueTypeX                          ; check the other x bytes
+_truetype2:
+ cp r15,r13                              ; check the previous with the new value
+ brsh _truetype3                         ; if r15 same or higher then we skip
+ mov r13,r15                             ;save the smallest in r13
+_truetype3:
+ dec r14                                 ; next row of bytes
+ brne _trueTypeY                         ; check again for Y
+ ;now r13 contains the number of left bytes to skip
+ ;we now check the same in reverse so we get the rgt space and the Z pointe is at the right pos
+ mov r14,r18                             ; Y bytes
+_truetypeyr:
+ clr r15
+ mov r16,r19                             ; x bits
+_truetypexr:
+  sbiw r30,1                             ; dec Z pointer
+#IF _ROMSIZE>65536
+  rcall _glcd_rampcheck_dec              ; check boundery
+#ENDIF
+ lpm                                     ; get byte
+ tst r0                                  ; test for zero
+ breq _truetype1R
+ dec r16
+ sub r30,r16
+ sbc r31,r1
+#IF _ROMSIZE>65536
+  rcall _glcd_rampcheck_dec              ; check boundery
+#ENDIF
+ rjmp _truetype2R
+_truetype1r:
+ inc r15
+ dec r16
+ brne _truetypeXR
+_truetype2r:
+ cp r15,r12
+ brsh _truetype3R
+ mov r12,r15
+_truetype3r:
+ dec r14
+ brne _truetypeYR
+ ;now R12 contains right space
+ cp r13,r19                             ; check if left is empty char
+ brne  _gwrite_lcdchar_rows             ; no so continue
+ mov r13,r22                            ; use defined spaces since a space would be all zero
+ clr r12                                ; clear right space otherwise it mess up
+_gwrite_lcdchar_rows:
+ sts {___lcdcol},r7                     ; restore column
+ mov r23,r19                            ; x bits 8 12 or 16
+ sub r23,r12                            ; minus right space
+
+_gwrite_lcdchar1:
+  lds r20,{___lcdcol}
+  lds r21,{___lcdrow}
+  call _Glocate                          ; set right position
+  cpi r22,0                              ; test for 0
+  breq  _gwrite_lcdchar2                 ; normal font
+  tst r13                                ; check spaces
+  breq  _gwrite_lcdchar2                 ; if zero then skip
+  mov r21,r13                            ; skips
+_gwrite_lcdcharSkips:
+  call _lpmbyte                          ; get byte
+  dec r21
+  brne _gwrite_lcdcharSkips
+  sub r23,r13                            ; adjust x bits
+_gwrite_lcdchar2:
+  call _lpmbyte                          ; get byte
+  mov r24,r0
+  lds r21,{___LCDrev}                    ; reverse display?
+  tst r21
+  breq _gwrite_lcdchar3
+  com r24                                ; not 0 so complement
+_gwrite_lcdchar3:
+ call _GWrite_data                       ; write char data
+ lds r21,{___lcdcol}                     ; increase column
+ inc r21
+ sts {___lcdcol},r21
+ dec r23                                 ; dec bits dones
+ brne _gwrite_lcdchar2                   ; write all X bytes
+
+ add r30,r12                             ; move z pointer with right space so we keep the proper pointer value
+ adc r31,r1                              ; r1 was 0
+#IF _ROMSIZE>65536
+  rcall _glcd_rampcheck_inc              ; check boundery
+#ENDIF
+ ;now add some space
+ cpi r22,0                               ; is it true type?
+ breq _gwrite_lcdchar5                   ; no so exit
+ lds r21,{___LCDrev}                     ; reverse display?
+ mov r23,r22                             ; right space columns
+_gwrite_rightspace:
+ clr r24
+ tst r21                                 ; test inverse
+ breq _gwrite_rightspace2                ; skip if normal
+ com r24                                 ; inverse
+_gwrite_rightspace2:
+ call _GWrite_data                       ; write char data
+ dec r23
+ brne _gwrite_rightspace
+ lds r21,{___lcdcol}                     ; increase column
+ add r21,r22
+ sts {___lcdcol},r21
+_gwrite_lcdchar5:
+ lds r21,{___lcdrow}                     ; inc row
+ inc r21
+ sts {___lcdrow},r21
+ dec r18                                 ; dec rows
+ breq _gwrite_lcdchar4                   ; all done so skip code
+ rjmp _gwrite_lcdchar_rows               ; for all rows
+
+_gwrite_lcdchar4:
+ pop r21                                 ; get original row back
+ sts {___lcdrow},r21                     ; restore
+
+#IF _ROMSIZE>65536
+*  OUT RAMPZ, R3                         ; restore RAMPZ for next character
+#ENDIF
+
+ Pop R31
+ Pop R30
+ret
+
+#IF _ROMSIZE>65536
+_glcd_rampcheck_inc:
+  Brcc _glcd_rampcheck_inc1                ; no boundery
+  In R2,RAMPZ
+  Inc R2
+  Out RAMPZ,R2
+_glcd_rampcheck_inc1:
+ret
+
+_glcd_rampcheck_dec:
+  Brcc _glcd_rampcheck_dec1                ; no boundery
+  In R2,RAMPZ
+  Dec R2
+  Out RAMPZ,R2
+_glcd_rampcheck_dec1:
+ret
+
+#ENDIF
+[END]
+
+
+[_GLOCATE]
+; called with R21 row  R20 col
+_setcolPic:
+  rcall _setcol
+  call _i2c_start
+  ldi r17,&H78
+  call _i2c_write
+  ldi r17,&H40
+  jmp _i2c_write   ; end in data mode
+
+_glocate:
+  Dec r20                          ; adjust
+  Dec r21                          ; adjust
+_setcol:
+  inc r20                          ; SH1106 132 col sart at 2
+  inc r20
+  push r20                         ; i2c destroys r20
+
+  call _i2c_start
+  ldi r17,&H78
+  call _i2c_write
+  ldi r17,&H00                     ; Command mode
+  call _i2c_write
+  ldi r17,&HB0
+  add r17,r21
+  call _i2c_write
+  ldi r17,&H00
+  call _i2c_write
+
+  pop r17
+  push r17
+  swap r17
+  andi r17,&H0F
+  sbr r17,16
+  call _i2c_write
+  ldi r17,&H00
+  call _i2c_write
+  pop r17
+  andi r17,&H0F
+  call _i2c_write
+
+rjmp _i2c_stop
+
+[END]
+
+
+
+[_getbytefromrom_eprom]
+$EXTERNAL _READEEPROM, _LPMBYTE
+; get a byte from code ROM or from EEPROM
+;you could write code to get the data from an external EEPROM
+_getbytefromrom:
+  Tst R23                          ; is it 0 ?
+  Breq _GetByteFromROM1            ; yes get from flash
+  Clr R26                          ; point to R0
+  Clr R27
+  jmp _ReadEEPROM1                ; get data in r0
+
+_getbytefromrom1:
+  jmp _LpmByte                    ; returns data in r0
+[END]
+
+[_showpicture]
+$EXTERNAL _DIV8 , _MUL8 , _GETBYTEFROMROM_EPROM , _GLOCATE
+; RLE encoded. When the data after the byte is AA, it means it is a repeating
+; sequence and the byte after it hold the number of repeats
+; AB, AC , AF,AA, EE means show AB,AC and AF EE times
+; needs more code but needs less picture data!
+; show a picture with ShowPic x,y , label
+; y+2 holds X, y+1 holds Y , y+0 holds EPROM/ROM flag, Z points to picture data
+; The calling code uses for example
+; clr r20
+; clr r21
+; st -y,r20      this way it will be referred to with  y+4
+; st -y,r21                   and                      y+3
+
+; ldi zl,low(plaatje * 2)        to point to picture data
+; ldi zh,high(plaatje * 2)
+; in the SED data is stored column after column with 8 rows of data
+_showpicture:
+ CLR R1                           ; repeats
+ CLR R2                           ; char to repeat
+ clr r3                           ; temp register
+ ld r23,y+                        ; 255 means get from EEPROM, 0 means get from flash
+ Call _getbytefromrom             ; Get Height Of Picture In Pixels
+ Mov r16,r0                       ;
+ Ldi r20,8
+ Call _Div8                       ; divide by 8
+ St -y,r16                        ; y+2  number of rows to do
+
+ Call _getbytefromrom             ; Get Width Of Picture In Pixels
+ st -y,r0                         ; number of cols into  y+1
+ st -y,r0                         ; number of cols into  y+0
+
+ ld r16,y+3                       ; get Y pos
+ Ldi R20 , 8
+ Call _div8                       ; Correct
+ st y+3,r16                       ; save row
+_showpicture1:
+ ld r20,y+4                       ; get X
+mov r15,r20
+ ld r21,y+3                       ; get Y
+ Rcall _setcolPic                    ; set address
+_showpicture2:
+; *** New RLE encoding routine ***
+  cp r1,r3                        ; is repeats 0 ?
+  brne _ShowPicture8              ; no
+  Call _getbytefromrom            ; Get Next Char
+  mov r2,r0                       ; save char
+  mov r24,r0
+  cpi r24,&HAA                    ; test for repeat char must always be shown
+  breq _ShowPicture9              ; we need to show AA
+  Call _getbytefromrom            ; Is It Rle print
+  mov r24,r0
+  cpi r24,&HAA                    ; is it a RLE encoded char?
+  breq _ShowPicture10             ; yes
+  sbiw R30,1                      ; no readjust pointer to graphic data
+  rjmp _ShowPicture11             ; show it
+
+_showpicture9:
+  adiw r30,1  ; skip 0
+  rjmp _ShowPicture11
+_showpicture8:
+  ;we are repeating
+  dec r1                          ; adjust repeat counter
+  breq _showpicture2
+  rjmp _ShowPicture11             ; show it
+_showpicture10:
+  Call _getbytefromrom            ; Get Number Of Repeats
+  Mov r24,r0
+  Tst r24                         ; is it zero?
+  Brne _showpicture15             ; no a real sequenc
+  Sbiw r30,2                      ; adjust pointer
+  Rjmp _showpicture11             ; skip somebytes
+_showpicture15:
+  mov r1,r0                       ; save number of repeats
+_showpicture11:
+  mov r24,r2
+; *** end of RLE code ***
+
+;--------------
+ lds r25,{___LCDrev}             ; reverse display?
+  tst r25
+  breq _showpicture12
+  com r24
+_showpicture12:
+;---------------
+
+  push r24
+  mov r20,r15
+  ldd r21,y+3
+  Rcall _setcolPic                    ; set address
+  pop r24
+  inc r15
+
+  mov r17, r24
+  call _i2c_write
+
+
+  ld r24,y+1                      ; get column counter
+  dec r24
+  st y+1,r24                      ; save col counter
+  brne _ShowPicture2              ; for all columns
+
+  ld r24,y+3                      ; next page
+  inc r24
+  st y+3,r24
+
+  ld r24,y+0                      ; get num of cols
+  st y+1,r24                      ; save for the new row
+
+  ld r24,y+2                      ; get row counter
+  dec r24
+  st y+2,r24
+  brne _showpicture1              ; for all rows
+
+
+  adiw r28,5                      ; adjust soft stack
+  jmp _i2c_stop
+[END]
