@@ -8,7 +8,7 @@
 '* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
 $nocompile
-$projecttime = 166
+$projecttime = 279
 
 
 '*******************************************************************************
@@ -39,14 +39,14 @@ Dim Enabug As Byte
 Dim Cmdtmp As String * 6
 Dim Atsnd As String * 200
 Dim Cmderr As Byte
-Dim Tmpstr8 As String * 16
+'Dim Tmpstr8 As String * 16
 Dim Tmpstr52 As String * 52
 
 Dim Cntrdisp As Byte
 
-Dim Bklsta As Byte
+'Dim Bklsta As Byte
 Dim Alarmac As Bit , Alarmtemp As Bit , Vacinant As Bit , Puertaant As Bit
-Dim Cntrac As Byte , Cntrpta As Byte , Cntrt As Byte
+Dim Cntrac As Byte , Cntrpta As Byte                        ', Cntrt As Byte
 'Variables TIMER1
 Dim T0c As Byte
 Dim Num_ventana As Byte
@@ -58,15 +58,22 @@ Dim Newseg As Bit
 
 ' TECLADO
 Dim Tecla As Byte , Tectmp As Byte , Teclaant AS BYTE
+Dim Teclaset As Bit
+Dim Initout As Bit , Tout As Bit , Cntrtout As Byte , Cntrtoutant As Byte
+Dim Cntrtmp As Byte
+Dim Tmax As Single
+Dim Tmaxeep As Eram Single
+Dim Ttmp As Single
 
 'DS18B20
 Dim Crc As Byte
 Dim T1 As Single , Bint As Integer , Tr As Byte , Ti As Byte
 Dim T1ant As Single
 Dim Bt(9) As Byte
-Dim Cntrtemp As Byte
+'Dim Cntrtemp As Byte
 Dim Signo As String * 2
-'Dim Tempestr4 As String * 4 , Signo As String * 1 , Tempe As Byte
+Dim Cntrerrortemp As Byte
+Dim Errortemp As Bit , Cntrmax As Byte , Cntrttemp As Byte
 
 'Variables SERIAL0
 Dim Ser_ini As Bit , Sernew As Bit
@@ -162,7 +169,19 @@ Int_timer1:
 
    Incr T1c
    T1c = T1c Mod 100
-   If T1c = 0 Then Set Newseg
+   If T1c = 0 Then
+      Set Newseg
+      If Initout = 1 Then
+         Incr Cntrtout
+         If Cntrtout = 20 Then
+            Set Tout
+            Cntrtout = 0
+            Initout = 0
+         End If
+      Else
+         Cntrtout = 0
+      End If
+   End If
 
 Return
 
@@ -190,18 +209,25 @@ If Vacin = 0 Then
 Else
    Reset Vacinant
 End If
+Setfont Font12x16
 Lcdat 4 , 1 , "T=-- "
 
 If Puerta = 0 Then
    Set Puertaant
 Else
-   reSet Puertaant
+   Reset Puertaant
 End If
 
 Call Beep(4 , 800)
 Call Beepok()
 
-
+Tmax = Tmaxeep
+Print #1 , "Tmax=" ; Tmax
+Setfont Font8x8tt
+Tmpw = Tmax
+Tmpstr52 = "Tmax=" + Str(tmpw) + " "
+Lcdat Posxtmax , Posytmax , Tmpstr52
+Cntrtoutant = 99
 
 
 End Sub
@@ -211,7 +237,6 @@ End Sub
 ' Subrutina para leer VAC
 '*****************************************************************************
 Sub Leer_vac()
-   'Locate 2 , 1
    If Vacin = 0 Then
       If Vacin <> Vacinant Then
          Lcdat 1 , 1 , "AC=OK"
@@ -219,9 +244,6 @@ Sub Leer_vac()
       End If
       Reset Relac
       Alarmac = 0
-      If Alarmtemp = 0 Then
-         Bklsta = 1
-      End If
    Else
       If Vacin <> Vacinant Then
          Lcdat 1 , 1 , "AC=NO"
@@ -229,7 +251,6 @@ Sub Leer_vac()
       End If
       Set Relac
       Alarmac = 1
-      Bklsta = 2
    End If
 
 End Sub
@@ -238,8 +259,6 @@ End Sub
 ' Subrutina para leer la puerta
 '*****************************************************************************
 Sub Leer_pta()
-   'Locate 1 , 14
-'   If Puerta = 0 Then
    If Puerta = 1 Then
       If Puerta <> Puertaant Then                           'Cambiado con el hardware AVR
          Puertaant = Puerta
@@ -253,29 +272,12 @@ Sub Leer_pta()
       End If
       Reset Relpta
    End If
-
 End Sub
 
 '*****************************************************************************
 ' Subrutina para timer1
 '*****************************************************************************
 Sub Displcd()
-   'Locate 1 , 1
-'(
-   If Alarmac = 1 Then
-      If Alarmtemp = 1 Then
-         Dispcntr2 = 30
-      Else
-         Dispcntr2 = 40
-      End If
-   Else
-      If Alarmtemp = 1 Then
-         Dispcntr2 = 20
-      Else
-         Dispcntr2 = Dispcntr
-      End If
-   End If
-')
    Select Case Cntrdisp
       Case 0:
          Lcdat 7 , 1 , ">              <"
@@ -309,12 +311,6 @@ Sub Displcd()
          Lcdat 7 , 1 , " <            > "
       Case 15:
          Lcdat 7 , 1 , "<              >"
-'      Case 20:
-'         Lcd "TEMP ALARM!  "
-'      Case 30:
-'         Lcd "AC&T  ALARM! "
-'      Case 40:
-'         Lcd " AC ALARM!   "
    End Select
 End Sub
 '*****************************************************************************
@@ -408,45 +404,50 @@ End Sub
 ' Subrutina para leer temperatura del DS18B20
 '*****************************************************************************
 Sub Leer_ds18b20()
-1wreset
-1wwrite &HCC
-1wwrite &H44
-Waitms 800
-'Call Rdramds18b20()
-
- 1wreset                                                    ' reset the bus
- 1wwrite &HCC
- 1wwrite &HBE                                               ' read 9 data bytest
- For Tr = 1 To 9
-    Bt(tr) = 1wread()
- Next                                                       ' read bytes in array
- 1wreset
-
-'Call Crcit                                                    'Check CRC
-
- Crc = 0
- For Ti = 1 To 9
- Tr = Crc Xor Bt(ti)
- Crc = Lookup(tr , Crc8)
- Next
-
-If Crc = 0 Then                                             ' if is OK, calculate for
-  Bint = Makeint(bt(1) , Bt(2))
-  If Bt(2).3 = 0 Then                                       'Temp postiva
-     T1 = Bint / 16
-     Signo = "+"
-  Else
-     Bint = Not Bint                                        ' Comprobar esta subrutina
-     Bint = Bint + 1
-     T1 = Bint / 16
-     Signo = "-"
-  End If
-  If Enabug.0 = 1 Then
-   Print #1 , Signo ; Fusing(t1 , "#.##")
-  End If
-Else
-   Print #1 , "CRC ERR"
-End If
+   1wreset
+   1wwrite &HCC
+   1wwrite &H44
+   Waitms 800
+   1wreset                                                     ' reset the bus
+   1wwrite &HCC
+   1wwrite &HBE                                                ' read 9 data bytest
+   For Tr = 1 To 9
+       Bt(tr) = 1wread()
+   Next                                                        ' read bytes in array
+   1wreset
+   If Err = 0 Then
+      Crc = 0
+      For Ti = 1 To 9
+         Tr = Crc Xor Bt(ti)
+         Crc = Lookup(tr , Crc8)
+      Next
+      If Crc = 0 Then                                          ' if is OK, calculate for
+        Bint = Makeint(bt(1) , Bt(2))
+        If Bt(2).3 = 0 Then                                       'Temp postiva
+           T1 = Bint / 16
+           Signo = "+"
+        Else
+           Bint = Not Bint                                        ' Comprobar esta subrutina
+           Bint = Bint + 1
+           T1 = Bint / 16
+           T1 = -t1
+           Signo = "-"
+        End If
+        If Enabug.0 = 1 Then
+         Print #1 , Signo ; Fusing(t1 , "#.##")
+        End If
+        Reset Errortemp
+      Else
+         Print #1 , "CRC ERR"
+      End If
+   Else
+      Incr Cntrerrortemp
+      If Cntrerrortemp = 5 Then
+         Set Errortemp
+         Cntrerrortemp = 0
+         Lcdat 4 , 1 , "T=Err "
+      End If
+   End If
 
 End Sub
 '*****************************************************************************
@@ -459,7 +460,7 @@ Sub Proctec()
    Tmpb = Tmpb And &H0F
    If Tmpb <> &H0F Then
       Tectmp = Tmpb
-      Waitms 10
+      Waitms 100
       Tmpb = Pinb
       Tmpb = Tmpb And &H0F
       Tecla = 9
@@ -476,23 +477,95 @@ Sub Proctec()
                'Teclaset = 0
             Case &H07:
                Tecla = 3
-               'Teclaset = 0
+               Teclaset = 1
             Case Else
                Tecla = 9
          End Select
          Teclaant = Tecla
          If Tecla < 4 Then
             Call Beep(4 , 800)
-            'Set Initout
-            'Tout = 0
-            'Cntrtout = 0
-            'Bklsta = 1
+            Set Initout
+            Tout = 0
+            Cntrtout = 0
          End If
       End If
 
    Else
       Tecla = 9
    End If
+
+   Setfont Font8x8tt
+   Select Case Tecla
+      Case 3:
+         Lcdat 7 , 1 , "SET Temp. maxima"
+         Waitms 200
+         Teclaset = 1
+         Ttmp = Tmax
+      Case 2:
+         If Teclaset = 1 Then
+            Ttmp = Ttmp + 1
+            If Ttmp > 80 Then
+               Ttmp = 79
+            End If
+            'Tmpstr52 = "Tmax=" + Fusing(ttmp , "#.") + " "
+            Tmpw = Ttmp
+            Tmpstr52 = "Tmax=" + Str(tmpw) + " "
+            Lcdat Posxtmax , Posytmax , Tmpstr52
+            Lcdat 7 , 1 , "Aumenta Tmax    "
+         Else
+            Lcdat 7 , 1 , "Pres. SET primero  "
+         End If
+
+      Case 1:
+         If Teclaset = 1 Then
+            Ttmp = Ttmp - 1
+            If Ttmp < 0 Then
+               Ttmp = 0
+            End If
+            'Tmpstr52 = "Tmax=" + Fusing(ttmp , "#.") + " "
+            Tmpw = Ttmp
+            Tmpstr52 = "Tmax=" + Str(tmpw) + " "
+            Lcdat Posxtmax , Posytmax , Tmpstr52
+            Lcdat 7 , 1 , "Disminuye Tmax     "
+         Else
+            Lcdat 7 , 1 , "Pres. SET primero  "
+         End If
+
+      Case 0:
+         If Teclaset = 1 Then
+            Tmax = Ttmp
+            Tmaxeep = Ttmp
+            Lcdat 7 , 1 , "TMAX SET OK      "
+            Teclaset = 0
+            Cntrtout = 16
+            Call Beepok()
+         Else
+            Lcdat 7 , 1 , "Pres. SET primero "
+         End If
+
+      Case Else
+         If Teclaset = 1 Then
+            If Cntrtoutant <> Cntrtout Then
+               Cntrtoutant = Cntrtout
+               Tmpb = Cntrtout Mod 2
+               If Tmpb = 0 Then
+                  Incr Cntrtmp
+                  Cntrtmp = Cntrtmp Mod 3
+               End If
+               Select Case Cntrtmp
+                  Case 1:
+                     Lcdat 7 , 1 , "Pres. A si + Tmax  "
+                  Case 2:
+                     Lcdat 7 , 1 , "Pres. D SI - Tmax  "
+                  Case 0:
+                     Lcdat 7 , 1 , "Pres. ENT terminar "
+
+               End Select
+            End If
+         End If
+
+   End Select
+   Teclaant = Tecla
 
 End Sub
 

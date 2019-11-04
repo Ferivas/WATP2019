@@ -8,7 +8,7 @@
 '
 
 
-$version 0 , 1 , 88
+$version 0 , 1 , 131
 $regfile = "m328Pdef.dat"
 $crystal = 16000000
 $hwstack = 120
@@ -17,12 +17,13 @@ $framesize = 120
 $baud = 9600
 
 
-$projecttime = 119
+$projecttime = 169
 
 
 
 'Declaracion de constantes
-
+Const Posxtmax = 5
+Const Posytmax = 74
 
 
 'Configuracion de entradas/salidas
@@ -122,9 +123,9 @@ Lcdat 7 , 1 , Version(3)
 Wait 1
 Cls
 
-Setfont Font12x16
-Call Inivar()
 
+Call Inivar()
+Setfont Font12x16
 
 Do
 
@@ -134,7 +135,13 @@ Do
       Call Procser()
    End If
 
+   Do
+      Call Proctec()
+   Loop Until Initout = 0
+   Teclaset = 0
+
    If Newseg = 1 Then
+      Setfont Font12x16
       Reset Newseg
       If Alarmac = 1 Then
          Incr Cntrac
@@ -158,31 +165,51 @@ Do
       Cntrdisp = Cntrdisp Mod 16
       Setfont Font8x8tt
       Call Displcd()
-
-      Incr Cntrtemp
-      Cntrtemp = Cntrtemp Mod 5
       Setfont Font12x16
-      If Cntrtemp = 0 Then
-         Call Leer_ds18b20()
-         If T1 <> T1ant Then
-            T1ant = T1
-            Lcdat 4 , 1 , "     "
-            Lcdat 4 , 1 , "T=" ; Fusing(t1 , "#.#")
-            Print #1 , T1
-         End If
-      End If
 
+
+       Call Leer_ds18b20()
+       If Alarmtemp = 0 Then
+          If T1 <> T1ant Then
+             T1ant = T1
+             Lcdat 4 , 1 , "     "
+             Lcdat 4 , 1 , "T=" ; Fusing(t1 , "#.#")
+             Print #1 , T1
+          End If
+       End If
+'         Tempestr4 = Fusing(t1 , "##.")
+'         Tempe = Val(tempestr4)
+       If T1 > Tmax Then
+          Incr Cntrmax
+          If Cntrmax = 5 Then
+             Set Alarmtemp
+             Set Reltmp
+             Cntrmax = 0
+          End If
+       Else
+          Reset Alarmtemp
+          Reset Reltmp
+       End If
+
+       If Alarmtemp = 1 Then
+          Incr Cntrttemp
+          If Cntrttemp.0 = 1 Then
+             Lcdat 4 , 1 , "     "
+             Lcdat 4 , 1 , "T=" ; Fusing(t1 , "#.#") , 1
+          Else
+             Lcdat 4 , 1 , "     "
+             Lcdat 4 , 1 , "T=" ; Fusing(t1 , "#.#") , 0
+          End If
+       End If
+
+       If Errortemp = 1 Then
+          Reset Relpwr
+          Set Reltmp
+       End If
 
    End If
 
    Call Leer_vac()
    Call Leer_pta()
-
-   Call Proctec()
-   If Tecla <> 9 Then
-      Print #1 , "K>" ; Tecla
-      Wait 1
-   End If
-
 
 Loop
