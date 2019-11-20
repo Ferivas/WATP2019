@@ -8,7 +8,7 @@
 '* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
 $nocompile
-$projecttime = 279
+$projecttime = 301
 
 
 '*******************************************************************************
@@ -35,6 +35,8 @@ Dim Cntrbuzz As Byte
 Dim Modbuzz As Byte
 Dim Topbuzz As Word , Durabuzz As Word
 Dim Enabug As Byte
+Dim Inivariables As Bit
+Dim Cntrcrcerr As Word
 
 Dim Cmdtmp As String * 6
 Dim Atsnd As String * 200
@@ -162,7 +164,7 @@ Int_timer1:
       Iluminar = Estado.num_ventana
       'Toggle Iluminar
       Led1 = Iluminar
-      Toggle Iluminar
+      'Toggle Iluminar
       Led2 = Iluminar
       Incr Num_ventana
    End If
@@ -229,6 +231,7 @@ Tmpstr52 = "Tmax=" + Str(tmpw) + " "
 Lcdat Posxtmax , Posytmax , Tmpstr52
 Cntrtoutant = 99
 
+Set Relpwr
 
 End Sub
 
@@ -382,6 +385,24 @@ Sub Procser()
                Cmderr = 4
             End If
 
+         Case "SETMAX"
+            If Numpar = 2 Then
+               Ttmp = Val(cmdsplit(2))
+               Tmax = Ttmp
+               Tmaxeep = Ttmp
+               Atsnd = "Tmax=" + Str(tmax)
+               Cmderr = 0
+            Else
+               Cmderr = 4
+            End If
+
+         Case "RSTVAR"
+            Cmderr = 0
+            Tmax = 30
+            Tmaxeep = Tmax
+            Atsnd = "Tmax=" + Str(tmax)
+            Set Inivariables
+
          Case Else
             Cmderr = 1
 
@@ -437,8 +458,10 @@ Sub Leer_ds18b20()
          Print #1 , Signo ; Fusing(t1 , "#.##")
         End If
         Reset Errortemp
+        Set Relpwr
       Else
-         Print #1 , "CRC ERR"
+         Incr Cntrcrcerr
+         Print #1 , "CRC ERR," ; Cntrcrcerr
       End If
    Else
       Incr Cntrerrortemp
@@ -467,17 +490,17 @@ Sub Proctec()
       If Tectmp = Tmpb Then
          Select Case Tectmp
             Case &H0E:
-               Tecla = 0
-               'Teclaset = 1
-            Case &H0D:
-               Tecla = 1
-               'Teclaset = 0
-            Case &H0B:
-               Tecla = 2
-               'Teclaset = 0
-            Case &H07:
                Tecla = 3
                Teclaset = 1
+            Case &H0D:
+               Tecla = 2
+               'Teclaset = 0
+            Case &H0B:
+               Tecla = 1
+               'Teclaset = 0
+            Case &H07:
+               Tecla = 0
+               'Teclaset = 1
             Case Else
                Tecla = 9
          End Select
@@ -507,6 +530,7 @@ Sub Proctec()
             If Ttmp > 80 Then
                Ttmp = 79
             End If
+            Print #1 , "Tamxset+=" ; Ttmp
             'Tmpstr52 = "Tmax=" + Fusing(ttmp , "#.") + " "
             Tmpw = Ttmp
             Tmpstr52 = "Tmax=" + Str(tmpw) + " "
@@ -522,6 +546,7 @@ Sub Proctec()
             If Ttmp < 0 Then
                Ttmp = 0
             End If
+            Print #1 , "Tamxset-=" ; Ttmp
             'Tmpstr52 = "Tmax=" + Fusing(ttmp , "#.") + " "
             Tmpw = Ttmp
             Tmpstr52 = "Tmax=" + Str(tmpw) + " "
@@ -535,6 +560,7 @@ Sub Proctec()
          If Teclaset = 1 Then
             Tmax = Ttmp
             Tmaxeep = Ttmp
+            Print #1 , "TamxsetOK=" ; Ttmp
             Lcdat 7 , 1 , "TMAX SET OK      "
             Teclaset = 0
             Cntrtout = 16
@@ -554,9 +580,9 @@ Sub Proctec()
                End If
                Select Case Cntrtmp
                   Case 1:
-                     Lcdat 7 , 1 , "Pres. A si + Tmax  "
+                     Lcdat 7 , 1 , "Pres. UP si + Tmax"
                   Case 2:
-                     Lcdat 7 , 1 , "Pres. D SI - Tmax  "
+                     Lcdat 7 , 1 , "Pres. DOWN si -Tmax"
                   Case 0:
                      Lcdat 7 , 1 , "Pres. ENT terminar "
 

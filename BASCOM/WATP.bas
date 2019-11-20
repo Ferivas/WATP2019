@@ -8,7 +8,7 @@
 '
 
 
-$version 0 , 1 , 131
+$version 0 , 1 , 150
 $regfile = "m328Pdef.dat"
 $crystal = 16000000
 $hwstack = 120
@@ -17,7 +17,7 @@ $framesize = 120
 $baud = 9600
 
 
-$projecttime = 169
+$projecttime = 201
 
 
 
@@ -51,14 +51,14 @@ Config Puerta = Input
 Set Portc.1
 
 
-Relac Alias Portd.4
+Relac Alias Portd.7
 Config Relac = Output
-Reltmp Alias Portd.5                                        'NO
+Reltmp Alias Portd.6                                        'NO
 Config Reltmp = Output
-Relpwr Alias Portd.6
+Relpwr Alias Portd.5
 Config Relpwr = Output
 
-Relpta Alias Portd.7
+Relpta Alias Portd.4
 Config Relpta = Output
 
 Buzzer Alias Portc.3
@@ -91,7 +91,7 @@ I2cinit
 
 $lib "i2c_twi.lbx"
 $lib "glcdSSD1306-I2C.lib"                                  'OLED 0.9"
-'$lib "glcdSH1106-I2C.lib"                 'OLED 1.3"
+'$lib "glcdSH1106-I2C.lib"                                   'OLED 1.3"
 
 Config Graphlcd = Custom , Cols = 128 , Rows = 64 , Lcdname = "SSD1306"
 
@@ -205,6 +205,11 @@ Do
        If Errortemp = 1 Then
           Reset Relpwr
           Set Reltmp
+       End If
+
+       If Inivariables = 1 Then
+         Reset Inivariables
+         Call Inivar()
        End If
 
    End If
